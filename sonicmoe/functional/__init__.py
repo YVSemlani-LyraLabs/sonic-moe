@@ -25,7 +25,7 @@ from .utils import enable_quack_gemm, is_using_quack_gemm
 
 def TC_topk_router_metadata(
     topk_router_indices: torch.Tensor, expert_frequency_offset, K: int
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, None]:
     s_scatter_idx = torch.argsort(topk_router_indices.view(-1)).int()
     expert_frequency_offset = torch.cat(
         [
@@ -36,12 +36,9 @@ def TC_topk_router_metadata(
     # s_reverse_scatter_idx = torch.argsort(s_scatter_idx).int()
     s_reverse_scatter_idx = torch.empty_like(s_scatter_idx)
     s_reverse_scatter_idx[s_scatter_idx] = torch.arange(
-        s_scatter_idx.shape[0], device=s_scatter_idx.device, dtype=s_scatter_idx.dtype
+        s_scatter_idx.size(0), device=s_scatter_idx.device, dtype=s_scatter_idx.dtype
     )
 
-    num_activated_expert_per_token_offset = torch.arange(
-        0, topk_router_indices.shape[0] * K + 1, K, dtype=torch.int32, device=topk_router_indices.device
-    )
     x_gather_idx = s_scatter_idx // K
 
     return (
@@ -49,7 +46,7 @@ def TC_topk_router_metadata(
         x_gather_idx,
         s_scatter_idx,
         s_reverse_scatter_idx,
-        num_activated_expert_per_token_offset,
+        None,
     )
 
 
@@ -478,7 +475,7 @@ def moe_TC_softmax_topk_layer(
         x_gather_idx,
         s_scatter_idx,
         s_reverse_scatter_idx,
-        num_activated_expert_per_token_offset,
+        num_activated_expert_per_token_offset,  # None, placeholder
     ) = TC_topk_router_metadata(topk_indices, expert_frequency_offset, K)
 
     T = x.size(0)
