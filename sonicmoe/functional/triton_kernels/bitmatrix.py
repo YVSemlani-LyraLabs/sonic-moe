@@ -17,11 +17,12 @@ def _keyed_add(x, y):
 # Adapted from https://github.com/triton-lang/triton/blob/434aecbe933af6a8d49595d4197bfc3df7618748/python/triton_kernels/triton_kernels/tensor_details/bitmatrix.py#L44
 @triton.jit
 def _bitmatrix_metadata_compute_stage1(
-    expert_freq_offset_ptr,
-    expert_offs_ptr,
+    expert_freq_ptr,
+    expert_freq_offs_ptr,
     E: tl.constexpr,
     partial_sum_ptr,
     n_tiles,
+    TK,
     BLOCK_M: tl.constexpr,  # chunk size for iterating over tiles per expert
     BLOCK_N: tl.constexpr,  # chunk size for iterating over experts in cumsum
 ):
@@ -49,10 +50,13 @@ def _bitmatrix_metadata_compute_stage1(
         curr_sum = 0
         for start in tl.static_range(0, E, BLOCK_N):
             offs = start + tl.arange(0, BLOCK_N)
-            freq = tl.load(expert_freq_offset_ptr + offs, mask=offs < E, other=0)
-            excl_cumsum = tl.cumsum(freq, 0) - freq + curr_sum
-            curr_sum += tl.sum(freq, 0)
-            tl.store(expert_offs_ptr + offs, excl_cumsum, mask=offs < E)
+            expert_freq = tl.load(expert_freq_ptr + offs, mask=offs < E, other=0)
+            excl_cumsum = tl.cumsum(expert_freq, 0) - expert_freq + curr_sum
+            curr_sum += tl.sum(expert_freq, 0)
+            tl.store(expert_freq_offs_ptr + offs, excl_cumsum, mask=offs < E)
+    elif pid == E + 1:
+        # expert_freq_off[E] = TK (total number of entries)
+        tl.store(expert_freq_offs_ptr + E, TK)
 
 
 # Adapted from https://github.com/triton-lang/triton/blob/434aecbe933af6a8d49595d4197bfc3df7618748/python/triton_kernels/triton_kernels/tensor_details/bitmatrix.py#L44

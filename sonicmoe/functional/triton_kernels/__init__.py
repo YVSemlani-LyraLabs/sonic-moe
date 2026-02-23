@@ -68,7 +68,7 @@ def TC_topk_router_metadata_triton(
     device = topk_router_indices.device
     E_POW2 = triton.next_power_of_2(E)
     K_POW2 = triton.next_power_of_2(K)
-    TOKENS_PER_BLOCK = max(32, min(256, 1024 // K_POW2))
+    TOKENS_PER_BLOCK = 1024 // K_POW2
     n_tiles = triton.cdiv(T, TOKENS_PER_BLOCK)
 
     # ── Kernel 1: tiled histogram ─────────────────────────────────────────────
@@ -87,6 +87,7 @@ def TC_topk_router_metadata_triton(
         K=K,
         E_POW2=E_POW2,
     )
+    expert_frequency = col_partial_sum_trans.sum(dim=1, dtype=torch.int32)
     col_partial_sum = col_partial_sum_trans.T  # [n_tiles, E]
 
     # ── Kernel 2: stage1 ─────────────────────────────────────────────────────
@@ -96,21 +97,18 @@ def TC_topk_router_metadata_triton(
     #   expert_freq_off[0:E] (= col_offs, a view into expert_freq_off).
     s_scatter_idx = torch.empty(TK, dtype=torch.int32, device=device)
     s_reverse_scatter_idx = torch.empty(TK, dtype=torch.int32, device=device)
-    expert_frequency = col_partial_sum_trans.sum(dim=1)
     expert_frequency_offset = torch.empty(E + 1, dtype=torch.int32, device=device)
     x_gather_idx = torch.empty(TK, dtype=torch.int32, device=device)
-    col_offs = expert_frequency_offset[:E]
 
-    STAGE1_BLOCK_M = max(32, min(512, triton.next_power_of_2(n_tiles)))
-    STAGE1_BLOCK_N = max(32, min(512, E_POW2))
-    _bitmatrix_metadata_compute_stage1[(E + 1,)](
+    _bitmatrix_metadata_compute_stage1[(E + 2,)](
         expert_frequency,
-        col_offs,
+        expert_frequency_offset,
         E,
         col_partial_sum,
         n_tiles,
-        BLOCK_M=STAGE1_BLOCK_M,
-        BLOCK_N=STAGE1_BLOCK_N,
+        TK,
+        BLOCK_M=128,
+        BLOCK_N=E_POW2,
     )
 
     # ── Kernel 3: stage2 ─────────────────────────────────────────────────────
@@ -123,14 +121,10 @@ def TC_topk_router_metadata_triton(
         T,
         col_partial_sum,
         n_tiles,
-        col_offs,
+        expert_frequency_offset[:E],
         K_POW2=K_POW2,
         TOKENS_PER_BLOCK=TOKENS_PER_BLOCK,
         K=K,
-        num_warps=4,
-        num_stages=2,
     )
-
-    expert_frequency_offset[E] = TK
 
     return (expert_frequency, expert_frequency_offset, x_gather_idx, s_scatter_idx, s_reverse_scatter_idx)
