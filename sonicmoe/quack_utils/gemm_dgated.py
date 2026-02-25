@@ -188,7 +188,7 @@ class GemmDGatedMixin(GemmActMixin):
                         (
                             tRS_rD_scaled_mn[m, 2 * n],
                             tRS_rD_scaled_mn[m, 2 * n + 1],
-                        ) = utils.mul_packed_f32x2(
+                        ) = cute.arch.mul_packed_f32x2(
                             (tRS_rD_mn[m, 2 * n], tRS_rD_mn[m, 2 * n + 1]),
                             (tDrColVec_mn[m, 0], tDrColVec_mn[m, 0]),
                         )
@@ -222,7 +222,7 @@ class GemmDGatedMixin(GemmActMixin):
                 tRS_rD_mn = layout_utils.convert_layout_zero_stride(tRS_rD, tDrColVecReduce.layout)
                 tRS_rOut_mn = layout_utils.convert_layout_zero_stride(tRS_rOut, tDrColVecReduce.layout)
                 for m in cutlass.range(cute.size(tDrColVecReduce_mn, mode=[0]), unroll_full=True):
-                    row_sum = utils.mul_packed_f32x2(
+                    row_sum = cute.arch.mul_packed_f32x2(
                         (tRS_rD_mn[m, 0], tRS_rD_mn[m, 1]), (tRS_rOut_mn[m, 0], tRS_rOut_mn[m, 1])
                     )
                     for n in cutlass.range(1, cute.size(tDrColVecReduce_mn, mode=[1]) // 2, unroll_full=True):
@@ -241,7 +241,7 @@ class GemmDGatedMixin(GemmActMixin):
                 tRS_rOut_mn = layout_utils.convert_layout_zero_stride(tRS_rOut, tDrColVec.layout)
                 for m in cutlass.range(cute.size(tDrColVec_mn, mode=[0]), unroll_full=True):
                     for n in cutlass.range(cute.size(tDrColVec_mn, mode=[1]) // 2, unroll_full=True):
-                        tRS_rOut_mn[m, 2 * n], tRS_rOut_mn[m, 2 * n + 1] = utils.mul_packed_f32x2(
+                        tRS_rOut_mn[m, 2 * n], tRS_rOut_mn[m, 2 * n + 1] = cute.arch.mul_packed_f32x2(
                             (tRS_rOut_mn[m, 2 * n], tRS_rOut_mn[m, 2 * n + 1]),
                             (tDrColVec_mn[m, 0], tDrColVec_mn[m, 0]),
                         )
