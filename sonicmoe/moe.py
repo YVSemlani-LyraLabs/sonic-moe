@@ -210,7 +210,8 @@ class MoE(nn.Module):
         hidden_states: torch.Tensor,
         kernel_backend_moe: KernelBackendMoE = KernelBackendMoE.sonicmoe,
         is_inference_mode: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        is_tracking_enabled: bool = False,
+    ) -> tuple[torch.Tensor, ...]:
         original_shape = hidden_states.shape
 
         # hidden_states -> (batch_size, query_length, hidden_size)
@@ -229,6 +230,8 @@ class MoE(nn.Module):
                 self.activation_function,
                 is_inference_mode or not self.training,
             )
+            if is_tracking_enabled:
+                _, selected_experts = self._get_topk(router_logits)
         else:
             # hidden_states -> (total_q, hidden_size)
             router_logits, router_weights, selected_experts = self._compute_routing_weights(hidden_states)
@@ -256,6 +259,9 @@ class MoE(nn.Module):
                 probs=F.softmax(router_logits, dim=-1, dtype=torch.float32),
                 expert_frequency=expert_frequency,
             )
+
+        if is_tracking_enabled:
+            return hidden_states, aux_loss, selected_experts, expert_frequency
 
         return hidden_states, aux_loss
 
